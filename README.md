@@ -14,14 +14,15 @@ cargo build --release
 
 3. Run the program:
 ```bash
-# Install configs
-cargo run -- install
+# Install your project as a binary
+cargo install --path .
 
-# List available configs
-cargo run -- list
+# Now you can use it from anywhere
+dotfiles install
+dotfiles list
+dotfiles status
+dotfiles add vim ~/.vimrc
 
-# Check configuration
-cargo run -- check
-
-# Run with verbose output
-cargo run -- install -v
+# Get help
+dotfiles --help
+dotfiles add --help
