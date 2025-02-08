@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use colored::*;
 use std::{
     fs,
@@ -23,6 +23,37 @@ struct DotfileManager {
     backup_dir: PathBuf,
     home_dir: PathBuf,
     verbose: bool,
+}
+
+#[derive(Parser)]
+#[command(author, version, about = "Manage your dotfiles")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
+    /// Enable verbose output
+    #[arg(short, long)]
+    verbose: bool,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Install all dotfiles
+    Install,
+
+    /// List available configurations
+    List,
+
+    /// Check configuration status
+    Status,
+
+    /// Add a new configuration file
+    Add {
+        /// Topic (e.g., vim, zsh)
+        topic: String,
+        /// Path to the file to add
+        file: PathBuf,
+    },
 }
 
 impl DotfileManager {
@@ -196,20 +227,90 @@ impl DotfileManager {
         }
         Ok(())
     }
+
+    fn check_status(&self) -> Result<()> {
+        println!("{}", "Configuration Status:".green().bold());
+        println!("{}", "===================".green());
+
+        let mut all_good = true;
+        let ignore_dirs = ["src", "target", ".git"];
+
+        for entry in fs::read_dir(&self.dotfiles_dir)? {
+            let entry = entry?;
+            if entry.path().is_dir() {
+                if let Some(topic) = entry.file_name().to_str() {
+                    if ignore_dirs.contains(&topic) {
+                        continue;
+                    }
+
+                    let mut topic_printed = false;
+
+                    for file in fs::read_dir(entry.path())? {
+                        let file = file?;
+                        if file.path().is_file() {
+                            let file_name = file.file_name();
+                            let target = self.get_target_path(topic, &file_name.to_string_lossy());
+
+                            if !target.exists() {
+                                if !topic_printed {
+                                    println!("\n{}:", topic.blue().bold());
+                                    topic_printed = true;
+                                }
+                                println!("  {} is not installed", file_name.to_string_lossy());
+                                all_good = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if all_good {
+            println!("\n{}", "All configurations are installed!".green());
+        }
+
+        Ok(())
+    }
+
+    fn add_config(&self, topic: &str, file: &Path) -> Result<()> {
+        if !file.exists() {
+            anyhow::bail!("File does not exist: {:?}", file);
+        }
+
+        let topic_dir = self.dotfiles_dir.join(topic);
+        fs::create_dir_all(&topic_dir)?;
+
+        let file_name = file.file_name().context("Invalid file name")?;
+        let dest = topic_dir.join(file_name);
+
+        fs::copy(file, &dest)?;
+        println!(
+            "Added {} to {} configuration",
+            file_name.to_string_lossy(),
+            topic
+        );
+
+        Ok(())
+    }
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
-    let manager = DotfileManager::new(args.verbose)?;
+    let cli = Cli::parse();
+    let manager = DotfileManager::new(cli.verbose)?;
 
-    match args.command.as_str() {
-        "install" => manager.install()?,
-        "list" => manager.list_configs()?,
-        "check" => {
-            println!("{}", "Checking configuration...".green());
-            manager.check_secrets()?;
+    match cli.command {
+        Commands::Install => {
+            manager.install()?;
         }
-        _ => println!("{}", "Unknown command".red()),
+        Commands::List => {
+            manager.list_configs()?;
+        }
+        Commands::Status => {
+            manager.check_status()?;
+        }
+        Commands::Add { topic, file } => {
+            manager.add_config(&topic, &file)?;
+        }
     }
 
     Ok(())
