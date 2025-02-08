@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use colored::*;
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -146,14 +145,48 @@ impl DotfileManager {
         Ok(())
     }
 
+    fn get_target_path(&self, topic: &str, file_name: &str) -> PathBuf {
+        match topic {
+            "zellij" => self.home_dir.join(".config").join("zellij").join(file_name),
+            "nvim" => self.home_dir.join(".config").join("nvim").join(file_name),
+            _ => self.home_dir.join(file_name),
+        }
+    }
+
     fn list_configs(&self) -> Result<()> {
-        println!("{}", "Available configurations:".green());
+        println!("{}", "Current Configuration Files:".green().bold());
+        println!("{}", "=========================".green());
+
         for entry in fs::read_dir(&self.dotfiles_dir)? {
             let entry = entry?;
             if entry.path().is_dir() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name != ".git" {
-                        println!("- {}", name);
+                if let Some(topic) = entry.file_name().to_str() {
+                    if topic == ".git" {
+                        continue;
+                    }
+
+                    println!("\n{}:", topic.blue().bold());
+
+                    // List files in the topic directory
+                    for file in fs::read_dir(entry.path())? {
+                        let file = file?;
+                        if file.path().is_file() {
+                            let file_name = file.file_name();
+                            let file_name_str = file_name.to_string_lossy();
+                            let target = self.get_target_path(topic, &file_name_str);
+
+                            println!("  Source: {}", file.path().display());
+                            println!("  Target: {}", target.display());
+                            println!(
+                                "  Status: {}",
+                                if target.exists() {
+                                    "Installed".green()
+                                } else {
+                                    "Not installed".yellow()
+                                }
+                            );
+                            println!("  {}", "-".repeat(50));
+                        }
                     }
                 }
             }
