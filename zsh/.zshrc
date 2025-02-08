@@ -30,9 +30,7 @@ alias gp="git push"
 alias gpl="git pull"
 alias gco="git checkout"
 alias gb="git branch"
-
 alias lg="lazygit"
-
 alias z="zellij"
 
 # ngrok static access easier

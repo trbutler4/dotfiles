@@ -7,7 +7,7 @@ cargo build --release
 ```bash
 ~/dotfiles/
 ├── nvim/
-│   └── .vimrc
+│   └── .init.lua
 ├── zsh/
 │   └── .zshrc
 ```
