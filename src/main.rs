@@ -157,17 +157,20 @@ impl DotfileManager {
         println!("{}", "Current Configuration Files:".green().bold());
         println!("{}", "=========================".green());
 
+        // List of directories to ignore
+        let ignore_dirs = ["src", "target", ".git"];
+
         for entry in fs::read_dir(&self.dotfiles_dir)? {
             let entry = entry?;
             if entry.path().is_dir() {
                 if let Some(topic) = entry.file_name().to_str() {
-                    if topic == ".git" {
+                    // Skip ignored directories
+                    if ignore_dirs.contains(&topic) {
                         continue;
                     }
 
                     println!("\n{}:", topic.blue().bold());
 
-                    // List files in the topic directory
                     for file in fs::read_dir(entry.path())? {
                         let file = file?;
                         if file.path().is_file() {
