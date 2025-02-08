@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::*;
+use serde::Deserialize;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -56,6 +57,17 @@ enum Commands {
     },
 }
 
+#[derive(Deserialize, Debug)]
+struct Config {
+    files: Vec<FileMapping>,
+}
+
+#[derive(Deserialize, Debug)]
+struct FileMapping {
+    source: String,
+    target: String,
+}
+
 impl DotfileManager {
     fn new(verbose: bool) -> Result<Self> {
         let home = dirs::home_dir().context("Could not determine home directory")?;
@@ -72,6 +84,13 @@ impl DotfileManager {
         })
     }
 
+    fn load_config(&self) -> Result<Config> {
+        let config_path = self.dotfiles_dir.join("config.toml");
+        let config_str = fs::read_to_string(config_path).context("Failed to read config.toml")?;
+        let config: Config = toml::from_str(&config_str).context("Failed to parse config.toml")?;
+        Ok(config)
+    }
+
     fn log(&self, msg: &str) {
         if self.verbose {
             println!("{} {}", "INFO:".blue(), msg);
@@ -84,22 +103,18 @@ impl DotfileManager {
         // Create backup directory
         fs::create_dir_all(&self.backup_dir).context("Failed to create backup directory")?;
 
-        // Process each topic directory
-        for entry in fs::read_dir(&self.dotfiles_dir)? {
-            let entry = entry?;
-            let path = entry.path();
+        // Load and process config
+        let config = self.load_config()?;
 
-            if path.is_dir() {
-                let topic_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .context("Invalid topic name")?;
+        for mapping in config.files {
+            let source = self.dotfiles_dir.join(&mapping.source);
+            let target = self.home_dir.join(&mapping.target);
 
-                if topic_name == ".git" {
-                    continue;
-                }
-
-                self.process_topic(topic_name, &path)?;
+            if source.is_dir() {
+                fs::create_dir_all(&target)?;
+                self.process_directory(&source, &target)?;
+            } else {
+                self.link_file(&source, &target.parent().unwrap_or(&self.home_dir))?;
             }
         }
 
@@ -188,42 +203,24 @@ impl DotfileManager {
         println!("{}", "Current Configuration Files:".green().bold());
         println!("{}", "=========================".green());
 
-        // List of directories to ignore
-        let ignore_dirs = ["src", "target", ".git"];
+        let config = self.load_config()?;
 
-        for entry in fs::read_dir(&self.dotfiles_dir)? {
-            let entry = entry?;
-            if entry.path().is_dir() {
-                if let Some(topic) = entry.file_name().to_str() {
-                    // Skip ignored directories
-                    if ignore_dirs.contains(&topic) {
-                        continue;
-                    }
+        for mapping in config.files {
+            let source = self.dotfiles_dir.join(&mapping.source);
+            let target = self.home_dir.join(&mapping.target);
 
-                    println!("\n{}:", topic.blue().bold());
-
-                    for file in fs::read_dir(entry.path())? {
-                        let file = file?;
-                        if file.path().is_file() {
-                            let file_name = file.file_name();
-                            let file_name_str = file_name.to_string_lossy();
-                            let target = self.get_target_path(topic, &file_name_str);
-
-                            println!("  Source: {}", file.path().display());
-                            println!("  Target: {}", target.display());
-                            println!(
-                                "  Status: {}",
-                                if target.exists() {
-                                    "Installed".green()
-                                } else {
-                                    "Not installed".yellow()
-                                }
-                            );
-                            println!("  {}", "-".repeat(50));
-                        }
-                    }
+            println!("\n{}:", mapping.source.blue().bold());
+            println!("  Source: {}", source.display());
+            println!("  Target: {}", target.display());
+            println!(
+                "  Status: {}",
+                if target.exists() {
+                    "Installed".green()
+                } else {
+                    "Not installed".yellow()
                 }
-            }
+            );
+            println!("  {}", "-".repeat(50));
         }
         Ok(())
     }
@@ -232,36 +229,14 @@ impl DotfileManager {
         println!("{}", "Configuration Status:".green().bold());
         println!("{}", "===================".green());
 
+        let config = self.load_config()?;
         let mut all_good = true;
-        let ignore_dirs = ["src", "target", ".git"];
 
-        for entry in fs::read_dir(&self.dotfiles_dir)? {
-            let entry = entry?;
-            if entry.path().is_dir() {
-                if let Some(topic) = entry.file_name().to_str() {
-                    if ignore_dirs.contains(&topic) {
-                        continue;
-                    }
-
-                    let mut topic_printed = false;
-
-                    for file in fs::read_dir(entry.path())? {
-                        let file = file?;
-                        if file.path().is_file() {
-                            let file_name = file.file_name();
-                            let target = self.get_target_path(topic, &file_name.to_string_lossy());
-
-                            if !target.exists() {
-                                if !topic_printed {
-                                    println!("\n{}:", topic.blue().bold());
-                                    topic_printed = true;
-                                }
-                                println!("  {} is not installed", file_name.to_string_lossy());
-                                all_good = false;
-                            }
-                        }
-                    }
-                }
+        for mapping in config.files {
+            let target = self.home_dir.join(&mapping.target);
+            if !target.exists() {
+                println!("{} is not installed", mapping.source);
+                all_good = false;
             }
         }
 

@@ -1,0 +1,11 @@
+[[files]]
+source = "nvim"
+target = ".config/nvim"
+
+[[files]]
+source = "zellij"
+target = ".config/zellij"
+
+[[files]]
+source = "zshrc"
+target = ".zshrc"
